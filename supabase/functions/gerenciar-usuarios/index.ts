@@ -85,42 +85,61 @@ Deno.serve(async (req) => {
       return json({ usuarios: resultado });
     }
 
-    // CRIAR USUÁRIO
+    // CRIAR USUÁRIO SEM ENVIAR E-MAIL
     if (acao === "criar") {
       const nome = String(body.nome || "").trim();
       const email = String(body.email || "").trim().toLowerCase();
+      const senha = String(body.senha || "");
       const papel = body.papel;
 
       if (!nome || !email || !email.includes("@")) {
         return json({ error: "Informe um nome e um e-mail válido." }, 400);
       }
 
+      if (senha.length < 8) {
+        return json({ error: "A senha deve ter pelo menos 8 caracteres." }, 400);
+      }
+
       if (!["administrador", "funcionario"].includes(papel)) {
         return json({ error: "Tipo de usuário inválido." }, 400);
       }
 
-      const { data, error } = await admin.auth.admin.inviteUserByEmail(
+      // Cria a conta sem enviar e-mail de convite.
+      const { data, error } = await admin.auth.admin.createUser({
         email,
-        {
-          data: { nome },
-          redirectTo: `${Deno.env.get("APP_URL") || "http://localhost:5173"}/primeiro-acesso`
-        }
-      );
+        password: senha,
+        email_confirm: true,
+        user_metadata: { nome },
+      });
+
       if (error) {
-        console.error("Erro ao enviar convite:", error);
+        console.error("Erro ao criar usuário:", error);
         throw error;
       }
 
+      if (!data.user) {
+        throw new Error("Não foi possível criar o usuário.");
+      }
+
+      // Atualiza o perfil criado pelo trigger do banco.
       const { error: updateError } = await admin
         .from("perfis")
         .update({ nome, papel, ativo: true })
         .eq("id", data.user.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        await admin.auth.admin.deleteUser(data.user.id);
+        throw updateError;
+      }
 
       return json({
-        mensagem: "Convite enviado com sucesso.",
-        usuario: { id: data.user.id, nome, email, papel },
+        mensagem: "Usuário criado com sucesso.",
+        usuario: {
+          id: data.user.id,
+          nome,
+          email,
+          papel,
+        },
       });
     }
 

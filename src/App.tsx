@@ -273,6 +273,7 @@ function UsersPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'administrador' | 'funcionario'>('funcionario');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
@@ -314,11 +315,13 @@ function UsersPage() {
           acao: 'criar',
           nome: name,
           email,
+          senha: password,
           papel: role
         }
       }
     );
     if (error) {
+      setBusy(false);
       console.log('ERRO:', error);
 
       const response = error.context;
@@ -336,20 +339,16 @@ function UsersPage() {
 
     setBusy(false);
 
-    if (error) {
-      alert('Erro ao criar usuário: ' + error.message);
-      return;
-    }
-
     if (data?.error) {
       alert(data.error);
       return;
     }
 
-    alert(data?.mensagem || 'Convite enviado com sucesso!');
+    alert(data?.mensagem || 'Usuário criado com sucesso!');
 
     setName('');
     setEmail('');
+    setPassword('');
     setRole('funcionario');
 
     loadUsers();
@@ -429,6 +428,18 @@ function UsersPage() {
           </label>
 
           <label>
+            Senha inicial
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Digite a senha inicial"
+              minLength={8}
+              required
+            />
+          </label>
+
+          <label>
             Tipo de usuário
             <select
               value={role}
@@ -442,12 +453,12 @@ function UsersPage() {
           </label>
 
           <button className="primary" disabled={busy}>
-            {busy ? 'Enviando convite...' : 'Criar usuário'}
+            {busy ? 'Criando usuário...' : 'Criar usuário'}
           </button>
         </form>
 
         <p className="empty">
-          O novo usuário receberá um convite por e-mail para acessar o sistema.
+          O usuário será criado imediatamente e poderá acessar o sistema usando o e-mail e a senha inicial definidos acima.
         </p>
       </section>
 
