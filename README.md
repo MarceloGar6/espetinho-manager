@@ -20,7 +20,12 @@ Node.js 20+ e conta Supabase.
 
    `npm install`
 
-7. Execute a configuração automatizada do Supabase:
+7. Execute a configuração automatizada do Supabase 
+   **URL do sistema (APP_URL):**
+   - **Desenvolvimento local:** execute `npm run dev` e utilize a URL exibida pelo Vite no terminal. Normalmente é `http://localhost:5173`.
+   - **Sistema publicado:** utilize a URL fornecida pela hospedagem, por exemplo, `https://espetinho-manager.pages.dev`.
+   Essa URL é utilizada pela Edge Function `gerenciar-usuarios` para redirecionar os funcionários durante o primeiro acesso por convite. Não adicione uma barra (`/`) no final do endereço.
+   Execute no terminal:
 
    `npm run configurar:supabase`
 
