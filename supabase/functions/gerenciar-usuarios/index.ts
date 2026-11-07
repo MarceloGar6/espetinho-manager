@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
         email,
         {
           data: { nome },
-          redirectTo: "http://localhost:5173/primeiro-acesso"
+          redirectTo: `${Deno.env.get("APP_URL") || "http://localhost:5173"}/primeiro-acesso`
         }
       );
       if (error) {
