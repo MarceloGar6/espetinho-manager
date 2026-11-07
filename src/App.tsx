@@ -74,6 +74,8 @@ function NewOrder() {
   const [categories, Cat] = useState<{id: string; nome: string}[]>([]);
   const [cart, C] = useState<Record<string, number>>({});
   const [note, N] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [tableNumber, setTableNumber] = useState('');
   const [busy, B] = useState(false);
 
   const nav = useNavigate();
@@ -147,6 +149,8 @@ function NewOrder() {
     const { data, error } = await supabase.rpc(
       'criar_pedido',
       {
+        p_nome_cliente: customerName || null,
+        p_numero_mesa: tableNumber || null,
         p_observacao: note || null,
         p_itens: itens
       }
@@ -239,12 +243,34 @@ function NewOrder() {
 
         </div>
 
+        <div className="formgrid">
+          <label>
+            Nome do cliente
+            <input
+              type="text"
+              value={customerName}
+              onChange={e => setCustomerName(e.target.value)}
+              placeholder="Ex.: João da Silva"
+            />
+          </label>
+
+          <label>
+            Número da mesa
+            <input
+              type="text"
+              value={tableNumber}
+              onChange={e => setTableNumber(e.target.value)}
+              placeholder="Ex.: 02"
+            />
+          </label>
+        </div>
+
         <label>
           Observação
           <textarea
             value={note}
             onChange={e => N(e.target.value)}
-            placeholder="Ex.: mesa 2, sem cebola..."
+            placeholder="Ex.: Pouco milho, sem cebola..."
           />
         </label>
 
