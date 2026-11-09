@@ -63,7 +63,212 @@ function Dashboard(){const [orders,S]=useState<Order[]>([]),[paid,P]=useState(0)
 function Stat({label,value}:{label:string;value:string}){return <div className="stat"><small>{label}</small><strong>{value}</strong></div>}
 function labelStatus(s:string){return ({recebido:'Recebido',em_preparo:'Em preparo',pronto:'Pronto',entregue:'Entregue',cancelado:'Cancelado'} as any)[s]||s}
 
-function Orders(){const [orders,S]=useState<Order[]>([]),[filter,F]=useState('ativos');async function load(){let q=supabase.from('pedidos').select('*').order('criado_em',{ascending:false}).limit(100);if(filter==='ativos')q=q.not('status','in','(entregue,cancelado)');else if(filter!=='todos')q=q.eq('status',filter);const {data}=await q;S((data||[]) as Order[])}useEffect(()=>{load()},[filter]);useEffect(()=>{const ch=supabase.channel('orders').on('postgres_changes',{event:'*',schema:'public',table:'pedidos'},load).subscribe();return()=>{supabase.removeChannel(ch)}},[filter]);async function advance(o:Order){const next:any={recebido:'em_preparo',em_preparo:'pronto',pronto:'entregue'};if(!next[o.status])return;const {error}=await supabase.rpc('atualizar_status_pedido',{p_pedido_id:o.id,p_novo_status:next[o.status],p_motivo:null});if(error)alert(error.message);load()}async function cancel(o:Order){const reason=prompt('Motivo do cancelamento:');if(!reason)return;const {error}=await supabase.rpc('atualizar_status_pedido',{p_pedido_id:o.id,p_novo_status:'cancelado',p_motivo:reason});if(error)alert(error.message);load()}return <div className="page"><div className="heading"><div><small>ATENDIMENTO</small><h1>Pedidos</h1></div><Link className="primary" to="/novo">+ Novo</Link></div><div className="filters">{[['ativos','Em andamento'],['todos','Todos'],['recebido','Recebidos'],['em_preparo','Em preparo'],['pronto','Prontos'],['entregue','Entregues'],['cancelado','Cancelados']].map(([v,l])=><button className={filter===v?'chosen':''} onClick={()=>F(v)} key={v}>{l}</button>)}</div><section className="panel"><h2>Pedidos</h2>{orders.length?orders.map(o=><div className="order" key={o.id}><div className="row"><b>Pedido #{o.numero}</b><span className={'pill '+o.status}>{labelStatus(o.status)}</span></div><small>{date(o.criado_em)}</small><div className="row"><b>{brl(o.total)}</b><div className="actions">{o.status!=='entregue'&&o.status!=='cancelado'&&<><button className="secondary" onClick={()=>advance(o)}>{o.status==='recebido'?'Iniciar preparo':o.status==='em_preparo'?'Marcar pronto':'Entregar'}</button><button className="danger" onClick={()=>cancel(o)}>Cancelar</button></>}</div></div><Link to={'/pedido/'+o.id}>Detalhes e pagamento →</Link></div>):<p className="empty">Nenhum pedido neste filtro.</p>}</section></div>}
+function Orders() {
+  const [orders, S] = useState<Order[]>([]);
+  const [filter, F] = useState('ativos');
+
+  function statusPagamento(o: any) {
+    const recebido = (o.pagamentos || [])
+      .filter((p: any) => p.status === 'confirmado')
+      .reduce((s: number, p: any) => s + Number(p.valor), 0);
+
+    return recebido >= Number(o.total) ? 'Pago' : 'Pagamento pendente';
+  }
+
+  async function load() {
+    let q = supabase.from('pedidos').select('*, pagamentos(valor,status)')
+      .order('criado_em', { ascending: false })
+      .limit(100);
+
+    if (filter === 'ativos') {
+      q = q.not('status', 'in', '(entregue,cancelado)');
+    } else if (filter !== 'todos') {
+      q = q.eq('status', filter);
+    }
+
+    const { data } = await q;
+    S((data || []) as Order[]);
+  }
+
+  useEffect(() => {
+    load();
+  }, [filter]);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel('orders')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedidos' },
+        load
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [filter]);
+
+  async function advance(o: Order) {
+    const next: any = {
+      recebido: 'em_preparo',
+      em_preparo: 'pronto',
+      pronto: 'entregue'
+    };
+
+    if (!next[o.status]) return;
+
+    const { error } = await supabase.rpc(
+      'atualizar_status_pedido',
+      {
+        p_pedido_id: o.id,
+        p_novo_status: next[o.status],
+        p_motivo: null
+      }
+    );
+
+    if (error) alert(error.message);
+    load();
+  }
+
+  async function cancel(o: Order) {
+    const reason = prompt('Motivo do cancelamento:');
+    if (!reason) return;
+
+    const { error } = await supabase.rpc(
+      'atualizar_status_pedido',
+      {
+        p_pedido_id: o.id,
+        p_novo_status: 'cancelado',
+        p_motivo: reason
+      }
+    );
+
+    if (error) alert(error.message);
+    load();
+  }
+
+  return (
+    <div className="page">
+      <div className="heading">
+        <div>
+          <small>ATENDIMENTO</small>
+          <h1>Pedidos</h1>
+        </div>
+
+        <Link className="primary" to="/novo">
+          + Novo
+        </Link>
+      </div>
+
+      <div className="filters">
+        {[
+          ['ativos', 'Em andamento'],
+          ['todos', 'Todos'],
+          ['recebido', 'Recebidos'],
+          ['em_preparo', 'Em preparo'],
+          ['pronto', 'Prontos'],
+          ['entregue', 'Entregues'],
+          ['cancelado', 'Cancelados']
+        ].map(([v, l]) => (
+          <button
+            className={filter === v ? 'chosen' : ''}
+            onClick={() => F(v)}
+            key={v}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <section className="panel">
+        <h2>Pedidos</h2>
+
+        {orders.length ? (
+          orders.map(o => (
+            <div className="order" key={o.id}>
+              <div className="row">
+            <b>Pedido #{o.numero}</b>
+
+            <div className="order-statuses">
+              <span className={'pill ' + o.status}>
+                {labelStatus(o.status)}
+              </span>
+
+              <span className={
+                'payment-status ' +
+                (statusPagamento(o) === 'Pago'
+                  ? 'payment-paid'
+                  : 'payment-pending')
+              }>
+                {statusPagamento(o)}
+              </span>
+            </div>
+          </div>
+
+              <div className="order-customer">
+                {o.nome_cliente && (
+                  <span>
+                    <b>Cliente:</b> {o.nome_cliente}
+                  </span>
+                )}
+
+                {o.numero_mesa && (
+                  <span>
+                    <b>Mesa:</b> {o.numero_mesa}
+                  </span>
+                )}
+
+                {!o.nome_cliente && !o.numero_mesa && (
+                  <span>Cliente não identificado</span>
+                )}
+              </div>
+
+              <small>{date(o.criado_em)}</small>
+
+              <div className="row">
+                <b>{brl(o.total)}</b>
+
+                <div className="actions">
+                  {o.status !== 'entregue' &&
+                    o.status !== 'cancelado' && (
+                      <>
+                        <button
+                          className="secondary"
+                          onClick={() => advance(o)}
+                        >
+                          {o.status === 'recebido'
+                            ? 'Iniciar preparo'
+                            : o.status === 'em_preparo'
+                            ? 'Marcar pronto'
+                            : 'Entregar'}
+                        </button>
+
+                        <button
+                          className="danger"
+                          onClick={() => cancel(o)}
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    )}
+                </div>
+              </div>
+
+              <Link to={'/pedido/' + o.id}>
+                Detalhes e pagamento →
+              </Link>
+            </div>
+          ))
+        ) : (
+          <p className="empty">
+            Nenhum pedido neste filtro.
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
 
 function Products(){const [items,S]=useState<Product[]>([]),[cats,C]=useState<Category[]>([]),[name,N]=useState(''),[price,P]=useState(''),[cat,Cat]=useState(''),[edit,Edit]=useState<string|null>(null),[available,A]=useState(true);async function load(){const [{data:p},{data:c}]=await Promise.all([supabase.from('produtos').select('*').order('nome'),supabase.from('categorias').select('*').eq('ativo',true)]);S((p||[]) as Product[]);C((c||[]) as Category[])}useEffect(()=>{load()},[]);async function save(e:React.FormEvent){e.preventDefault();const payload={nome:name,preco:Number(price),categoria_id:cat||null,disponivel:available,ativo:true};const r=edit?await supabase.from('produtos').update(payload).eq('id',edit):await supabase.from('produtos').insert(payload);if(r.error){alert(r.error.message);return}N('');P('');Cat('');Edit(null);load()}function start(p?:Product){Edit(p?.id||null);N(p?.nome||'');P(p?String(p.preco):'');Cat(p?.categoria_id||'');A(p?.disponivel??true)}return <div className="page"><div className="heading"><div><small>CARDÁPIO</small><h1>Produtos</h1></div><button className="primary" onClick={()=>start()}>+ Produto</button></div><section className="panel"><h2>{edit?'Editar produto':'Cadastrar produto'}</h2><form className="formgrid" onSubmit={save}><label>Nome<input value={name} onChange={e=>N(e.target.value)} required/></label><label>Preço<input type="number" min="0" step="0.01" value={price} onChange={e=>P(e.target.value)} required/></label><label>Categoria<select value={cat} onChange={e=>Cat(e.target.value)}><option value="">Sem categoria</option>{cats.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label className="check"><input type="checkbox" checked={available} onChange={e=>A(e.target.checked)}/> Disponível</label><button className="primary">Salvar</button>{edit&&<button type="button" className="secondary" onClick={()=>start()}>Cancelar edição</button>}</form></section><section className="panel"><h2>Produtos cadastrados</h2>{items.map(p=><div className="row" key={p.id}><div><b>{p.nome}</b><small>{brl(p.preco)} · {p.disponivel?'Disponível':'Indisponível'}</small></div><div className="actions"><button className="secondary" onClick={()=>start(p)}>Editar</button><button className="secondary" onClick={async()=>{await supabase.from('produtos').update({disponivel:!p.disponivel}).eq('id',p.id);load()}}>{p.disponivel?'Indisponibilizar':'Disponibilizar'}</button></div></div>)}</section><section className="panel"><h2>Categorias</h2><CategoryManager onChange={load}/></section></div>}
 function CategoryManager({onChange}:{onChange:()=>void}){const [name,N]=useState('');async function add(e:React.FormEvent){e.preventDefault();const {error}=await supabase.from('categorias').insert({nome:name});if(error)alert(error.message);else{N('');onChange()}}return <form className="inline" onSubmit={add}><input placeholder="Nova categoria" value={name} onChange={e=>N(e.target.value)} required/><button className="primary">Adicionar</button></form>}
@@ -291,8 +496,166 @@ function NewOrder() {
   );
 }
 
-function OrderDetail(){const id=location.pathname.split('/').pop()!;const [order,O]=useState<any>(null),[methods,M]=useState<any[]>([]),[method,Me]=useState(''),[amount,A]=useState('');async function load(){const [{data:o},{data:m}]=await Promise.all([supabase.from('pedidos').select('*,itens_pedido(*),pagamentos(*,formas_pagamento(nome))').eq('id',id).single(),supabase.from('formas_pagamento').select('*').eq('ativo',true)]);O(o);M(m||[]);if(m?.length&&!method)Me(m[0].id)}useEffect(()=>{load()},[id]);const paid=order?.pagamentos?.filter((p:any)=>p.status==='confirmado').reduce((s:number,p:any)=>s+Number(p.valor),0)||0;async function pay(e:React.FormEvent){e.preventDefault();const {error}=await supabase.rpc('registrar_pagamento',{p_pedido_id:id,p_forma_pagamento_id:method,p_valor:Number(amount)});if(error)alert(error.message);else{A('');load()}}if(!order)return <p>Carregando pedido...</p>;return <div className="page"><div className="heading"><div><small>DETALHES</small><h1>Pedido #{order.numero}</h1><p>{date(order.criado_em)}</p></div><span className={'pill '+order.status}>{labelStatus(order.status)}</span></div><section className="panel"><h2>Itens</h2>{order.itens_pedido.map((i:any)=><div className="row" key={i.id}><span>{i.quantidade}× {i.nome_produto}</span><b>{brl(i.subtotal)}</b></div>)}<div className="total"><span>Total</span><b>{brl(order.total)}</b></div></section><section className="panel"><h2>Pagamentos</h2><div className="row"><span>Recebido</span><b>{brl(paid)}</b></div><div className="row"><span>Saldo</span><b>{brl(Number(order.total)-paid)}</b></div>{order.pagamentos.map((p:any)=><div className="row" key={p.id}><span>{p.formas_pagamento?.nome}</span><b>{brl(p.valor)}</b></div>)}{Number(order.total)>paid&&order.status!=='cancelado'&&<form onSubmit={pay}><label>Forma<select value={method} onChange={e=>Me(e.target.value)}>{methods.map(m=><option value={m.id} key={m.id}>{m.nome}</option>)}</select></label><label>Valor<input type="number" min="0.01" step="0.01" max={Number(order.total)-paid} value={amount} onChange={e=>A(e.target.value)} required/></label><button className="primary wide">Registrar pagamento</button></form>}</section></div>}
+function OrderDetail() {
+  const id = location.pathname.split('/').pop()!;
 
+  const [order, O] = useState<any>(null);
+  const [methods, M] = useState<any[]>([]);
+  const [method, Me] = useState('');
+  const [amount, A] = useState('');
+
+  async function load() {
+    const [{ data: o }, { data: m }] = await Promise.all([
+      supabase
+        .from('pedidos')
+        .select('*,itens_pedido(*),pagamentos(*,formas_pagamento(nome))')
+        .eq('id', id)
+        .single(),
+
+      supabase
+        .from('formas_pagamento')
+        .select('*')
+        .eq('ativo', true)
+    ]);
+
+    O(o);
+    M(m || []);
+
+    if (m?.length && !method) Me(m[0].id);
+  }
+
+  useEffect(() => {
+    load();
+  }, [id]);
+
+  const paid =
+    order?.pagamentos
+      ?.filter((p: any) => p.status === 'confirmado')
+      .reduce((s: number, p: any) => s + Number(p.valor), 0) || 0;
+
+  async function pay(e: React.FormEvent) {
+    e.preventDefault();
+
+    const { error } = await supabase.rpc('registrar_pagamento', {
+      p_pedido_id: id,
+      p_forma_pagamento_id: method,
+      p_valor: Number(amount)
+    });
+
+    if (error) {
+      alert(error.message);
+    } else {
+      A('');
+      load();
+    }
+  }
+
+  if (!order) return <p>Carregando pedido...</p>;
+
+  return (
+    <div className="page">
+      <div className="heading">
+        <div>
+          <small>DETALHES</small>
+          <h1>Pedido #{order.numero}</h1>
+          <p>{date(order.criado_em)}</p>
+        </div>
+
+        <span className={'pill ' + order.status}>
+          {labelStatus(order.status)}
+        </span>
+      </div>
+
+      <section className="panel">
+        <h2>Identificação do cliente</h2>
+
+        <div className="order-customer">
+          <span>
+            <b>Cliente:</b>{' '}
+            {order.nome_cliente || 'Não informado'}
+          </span>
+
+          <span>
+            <b>Mesa:</b>{' '}
+            {order.numero_mesa || 'Não informada'}
+          </span>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>Itens</h2>
+
+        {order.itens_pedido.map((i: any) => (
+          <div className="row" key={i.id}>
+            <span>{i.quantidade}× {i.nome_produto}</span>
+            <b>{brl(i.subtotal)}</b>
+          </div>
+        ))}
+
+        <div className="total">
+          <span>Total</span>
+          <b>{brl(order.total)}</b>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>Pagamentos</h2>
+
+        <div className="row">
+          <span>Recebido</span>
+          <b>{brl(paid)}</b>
+        </div>
+
+        <div className="row">
+          <span>Saldo</span>
+          <b>{brl(Number(order.total) - paid)}</b>
+        </div>
+
+        {order.pagamentos.map((p: any) => (
+          <div className="row" key={p.id}>
+            <span>{p.formas_pagamento?.nome}</span>
+            <b>{brl(p.valor)}</b>
+          </div>
+        ))}
+
+        {Number(order.total) > paid && order.status !== 'cancelado' && (
+          <form onSubmit={pay}>
+            <label>
+              Forma
+              <select
+                value={method}
+                onChange={e => Me(e.target.value)}
+              >
+                {methods.map(m => (
+                  <option value={m.id} key={m.id}>
+                    {m.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Valor
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                max={Number(order.total) - paid}
+                value={amount}
+                onChange={e => A(e.target.value)}
+                required
+              />
+            </label>
+
+            <button className="primary wide">
+              Registrar pagamento
+            </button>
+          </form>
+        )}
+      </section>
+    </div>
+  );
+}
 function Reports(){const [start,S]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)),[end,E]=useState(new Date().toISOString().slice(0,10)),[sum,Su]=useState(0),[count,C]=useState(0);async function load(){const from=new Date(start+'T00:00:00-03:00').toISOString(),to=new Date(end+'T23:59:59-03:00').toISOString();const [{data:p},{count:n}]=await Promise.all([supabase.from('pagamentos').select('valor').eq('status','confirmado').gte('criado_em',from).lte('criado_em',to),supabase.from('pedidos').select('*',{count:'exact',head:true}).gte('criado_em',from).lte('criado_em',to).neq('status','cancelado')]);Su((p||[]).reduce((s,x)=>s+Number(x.valor),0));C(n||0)}useEffect(()=>{load()},[]);return <div className="page"><div className="heading"><div><small>ADMINISTRAÇÃO</small><h1>Relatórios</h1></div></div><section className="panel"><div className="formgrid"><label>De<input type="date" value={start} onChange={e=>S(e.target.value)}/></label><label>Até<input type="date" value={end} onChange={e=>E(e.target.value)}/></label><button className="primary" onClick={load}>Filtrar</button></div></section><div className="stats"><Stat label="Total recebido" value={brl(sum)}/><Stat label="Pedidos não cancelados" value={String(count)}/></div></div>}
 function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
