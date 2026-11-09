@@ -657,6 +657,7 @@ function OrderDetail() {
   );
 }
 function Reports(){const [start,S]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)),[end,E]=useState(new Date().toISOString().slice(0,10)),[sum,Su]=useState(0),[count,C]=useState(0);async function load(){const from=new Date(start+'T00:00:00-03:00').toISOString(),to=new Date(end+'T23:59:59-03:00').toISOString();const [{data:p},{count:n}]=await Promise.all([supabase.from('pagamentos').select('valor').eq('status','confirmado').gte('criado_em',from).lte('criado_em',to),supabase.from('pedidos').select('*',{count:'exact',head:true}).gte('criado_em',from).lte('criado_em',to).neq('status','cancelado')]);Su((p||[]).reduce((s,x)=>s+Number(x.valor),0));C(n||0)}useEffect(()=>{load()},[]);return <div className="page"><div className="heading"><div><small>ADMINISTRAÇÃO</small><h1>Relatórios</h1></div></div><section className="panel"><div className="formgrid"><label>De<input type="date" value={start} onChange={e=>S(e.target.value)}/></label><label>Até<input type="date" value={end} onChange={e=>E(e.target.value)}/></label><button className="primary" onClick={load}>Filtrar</button></div></section><div className="stats"><Stat label="Total recebido" value={brl(sum)}/><Stat label="Pedidos não cancelados" value={String(count)}/></div></div>}
+
 function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [name, setName] = useState('');
@@ -665,6 +666,11 @@ function UsersPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(true);
+
+  // Estados para alteração de senha
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
 
   async function loadUsers() {
     setLoadingUsers(true);
@@ -709,6 +715,7 @@ function UsersPage() {
         }
       }
     );
+
     if (error) {
       setBusy(false);
       console.log('ERRO:', error);
@@ -775,6 +782,53 @@ function UsersPage() {
 
     alert(data?.mensagem || 'Status atualizado!');
     loadUsers();
+  }
+
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!selectedUser) return;
+
+    if (newPassword.length < 8) {
+      alert('A senha deve ter pelo menos 8 caracteres.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Deseja realmente alterar a senha de ${selectedUser.nome}?`
+    );
+
+    if (!confirmed) return;
+
+    setChangingPassword(true);
+
+    const { data, error } = await supabase.functions.invoke(
+      'gerenciar-usuarios',
+      {
+        body: {
+          acao: 'alterar_senha',
+          id: selectedUser.id,
+          senha: newPassword
+        }
+      }
+    );
+
+    setChangingPassword(false);
+
+    if (error) {
+      alert('Erro ao alterar senha: ' + error.message);
+      return;
+    }
+
+    if (data?.error) {
+      alert(data.error);
+      return;
+    }
+
+    alert(data?.mensagem || 'Senha alterada com sucesso!');
+
+    setSelectedUser(null);
+    setNewPassword('');
   }
 
   return (
@@ -873,19 +927,78 @@ function UsersPage() {
                 </small>
               </div>
 
-              <button
-                className={user.ativo ? 'danger' : 'secondary'}
-                onClick={() => changeStatus(user)}
-              >
-                {user.ativo ? 'Desativar' : 'Ativar'}
-              </button>
+              <div className="actions">
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setSelectedUser(user);
+                    setNewPassword('');
+                  }}
+                >
+                  Alterar senha
+                </button>
+
+                <button
+                  className={user.ativo ? 'danger' : 'secondary'}
+                  onClick={() => changeStatus(user)}
+                >
+                  {user.ativo ? 'Desativar' : 'Ativar'}
+                </button>
+              </div>
             </div>
           ))
         )}
       </section>
+
+      {/* Formulário aparece apenas uma vez, fora do users.map() */}
+      {selectedUser && (
+        <section className="panel">
+          <h2>Alterar senha</h2>
+
+          <p>
+            Definir nova senha para <b>{selectedUser.nome}</b>.
+          </p>
+
+          <form onSubmit={changePassword}>
+            <label>
+              Nova senha
+              <input
+                type="password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="Digite a nova senha"
+                minLength={8}
+                required
+              />
+            </label>
+
+            <div className="actions">
+              <button
+                type="submit"
+                className="primary"
+                disabled={changingPassword}
+              >
+                {changingPassword ? 'Alterando...' : 'Salvar nova senha'}
+              </button>
+
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setSelectedUser(null);
+                  setNewPassword('');
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
     </div>
   );
 }
+
 function PrimeiroAcesso() {
   const nav = useNavigate();
 

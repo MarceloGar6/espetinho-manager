@@ -165,7 +165,39 @@ Deno.serve(async (req) => {
 
       return json({ mensagem: "Status atualizado com sucesso." });
     }
+        // ALTERAR SENHA DE USUÁRIO
+    if (acao === "alterar_senha") {
+      const id = String(body.id || "").trim();
+      const senha = String(body.senha || "");
 
+      if (!id) {
+        return json({ error: "Usuário não informado." }, 400);
+      }
+
+      if (senha.length < 8) {
+        return json({
+          error: "A nova senha deve ter pelo menos 8 caracteres."
+        }, 400);
+      }
+
+      const { data, error } = await admin.auth.admin.updateUserById(
+        id,
+        { password: senha }
+      );
+
+      if (error) {
+        console.error("Erro ao alterar senha:", error);
+        return json({ error: "Não foi possível alterar a senha." }, 400);
+      }
+
+      if (!data.user) {
+        return json({ error: "Usuário não encontrado." }, 404);
+      }
+
+      return json({
+        mensagem: "Senha alterada com sucesso."
+      });
+    }
     return json({ error: "Ação desconhecida." }, 400);
   } catch (error) {
   console.error("ERRO NA EDGE FUNCTION:", error);
