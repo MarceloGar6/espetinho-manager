@@ -1371,7 +1371,7 @@ function Reports() {
 
     const { data, error } = await supabase
       .from('pedidos')
-      .select('id, criado_em, total, status, itens_pedido(quantidade, nome_produto, subtotal), pagamentos(valor, status)')
+      .select('id, criado_em, total, status, itens_pedido(quantidade, produto_id, nome_produto, subtotal), pagamentos(valor, status)')
       .gte('criado_em', from)
       .lte('criado_em', to);
 
@@ -1408,31 +1408,34 @@ function Reports() {
 
     const ranking: Record<
       string,
-      { quantidade: number; faturamento: number }
+      {
+        nome: string;
+        quantidade: number;
+        faturamento: number;
+      }
     > = {};
 
     validOrders.forEach(pedido => {
       (pedido.itens_pedido || []).forEach(item => {
+        const id = item.produto_id || `antigo-${item.nome_produto}`;
         const nome = item.nome_produto || 'Produto';
 
-        if (!ranking[nome]) {
-          ranking[nome] = {
+        if (!ranking[id]) {
+          ranking[id] = {
+            nome,
             quantidade: 0,
             faturamento: 0
           };
         }
 
-        ranking[nome].quantidade += Number(item.quantidade || 0);
-        ranking[nome].faturamento += Number(item.subtotal || 0);
+        ranking[id].nome = nome;
+        ranking[id].quantidade += Number(item.quantidade || 0);
+        ranking[id].faturamento += Number(item.subtotal || 0);
       });
     });
 
     TP(
-      Object.entries(ranking)
-        .map(([nome, valores]) => ({
-          nome,
-          ...valores
-        }))
+      Object.values(ranking)
         .sort((a, b) =>
           b.quantidade - a.quantidade ||
           b.faturamento - a.faturamento
