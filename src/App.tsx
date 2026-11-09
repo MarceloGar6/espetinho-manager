@@ -59,13 +59,132 @@ function AppShell({
     </>
   );
 }
-function Dashboard(){const [orders,S]=useState<Order[]>([]),[paid,P]=useState(0);async function load(){const start=new Date();start.setHours(0,0,0,0);const [{data:o},{data:p}]=await Promise.all([supabase.from('pedidos').select('*').gte('criado_em',start.toISOString()).order('criado_em',{ascending:false}),supabase.from('pagamentos').select('valor').eq('status','confirmado').gte('criado_em',start.toISOString())]);S((o||[]) as Order[]);P((p||[]).reduce((s:any,x:any)=>s+Number(x.valor),0));}useEffect(()=>{load()},[]);return <div className="page"><div className="heading"><div><small>VISÃO GERAL</small><h1>Dashboard</h1><p>Resumo do movimento de hoje.</p></div><button className="secondary" onClick={load}><RefreshCw size={16}/> Atualizar</button></div><div className="stats"><Stat label="Pedidos hoje" value={String(orders.length)}/><Stat label="Recebido hoje" value={brl(paid)}/><Stat label="Aguardando" value={String(orders.filter(x=>x.status==='recebido').length)}/><Stat label="Em preparo" value={String(orders.filter(x=>x.status==='em_preparo').length)}/></div><section className="panel"><h2>Pedidos recentes</h2>{orders.length?orders.slice(0,8).map(o=><div className="row" key={o.id}><div><b>Pedido #{o.numero}</b><small>{date(o.criado_em)}</small></div><div><span className={'pill '+o.status}>{labelStatus(o.status)}</span> <b>{brl(o.total)}</b></div></div>):<p className="empty">Nenhum pedido hoje.</p>}</section></div>}
+
+function Dashboard() {
+  const [orders, S] = useState<any[]>([]);
+  const [paid, P] = useState(0);
+
+  function statusPagamento(o: any) {
+    const recebido = (o.pagamentos || [])
+      .filter((p: any) => p.status === 'confirmado')
+      .reduce((s: number, p: any) => s + Number(p.valor), 0);
+
+    return recebido >= Number(o.total) ? 'Pago' : 'Pagamento pendente';
+  }
+
+  async function load() {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const [{ data: o, error: orderError }, { data: p }] = await Promise.all([
+      supabase
+        .from('pedidos')
+        .select('*, pagamentos(valor,status)')
+        .gte('criado_em', start.toISOString())
+        .order('criado_em', { ascending: false }),
+
+      supabase
+        .from('pagamentos')
+        .select('valor')
+        .eq('status', 'confirmado')
+        .gte('criado_em', start.toISOString())
+    ]);
+
+    if (orderError) {
+      alert('Erro ao carregar pedidos: ' + orderError.message);
+      return;
+    }
+
+    S(o || []);
+    P((p || []).reduce((s: number, x: any) => s + Number(x.valor), 0));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <div className="page">
+      <div className="heading">
+        <div>
+          <small>VISÃO GERAL</small>
+          <h1>Dashboard</h1>
+          <p>Resumo do movimento de hoje.</p>
+        </div>
+
+        <button className="secondary" onClick={load}>
+          <RefreshCw size={16} /> Atualizar
+        </button>
+      </div>
+
+      <div className="stats">
+        <Stat label="Pedidos hoje" value={String(orders.length)} />
+        <Stat label="Recebido hoje" value={brl(paid)} />
+        <Stat label="Aguardando" value={String(orders.filter(x => x.status === 'recebido').length)} />
+        <Stat label="Em preparo" value={String(orders.filter(x => x.status === 'em_preparo').length)} />
+      </div>
+
+      <section className="panel">
+        <h2>Pedidos recentes</h2>
+
+        {orders.length ? (
+          orders.slice(0, 8).map(o => (
+            <div className="order" key={o.id}>
+              <div className="row">
+                <b>Pedido #{o.numero}</b>
+
+                <div className="order-statuses">
+                  <span className={'pill ' + o.status}>
+                    {labelStatus(o.status)}
+                  </span>
+
+                  <span className={
+                    'payment-status ' +
+                    (statusPagamento(o) === 'Pago'
+                      ? 'payment-paid'
+                      : 'payment-pending')
+                  }>
+                    {statusPagamento(o)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="order-customer">
+                <span>
+                  <b>Cliente:</b> {o.nome_cliente || 'Não informado'}
+                </span>
+
+                <span>
+                  <b>Mesa:</b> {o.numero_mesa || 'Não informada'}
+                </span>
+              </div>
+
+              <small>{date(o.criado_em)}</small>
+
+              <div className="row">
+                <b>{brl(o.total)}</b>
+                <Link to={'/pedido/' + o.id}>
+                  Detalhes e pagamento →
+                </Link>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="empty">Nenhum pedido hoje.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function Stat({label,value}:{label:string;value:string}){return <div className="stat"><small>{label}</small><strong>{value}</strong></div>}
 function labelStatus(s:string){return ({recebido:'Recebido',em_preparo:'Em preparo',pronto:'Pronto',entregue:'Entregue',cancelado:'Cancelado'} as any)[s]||s}
 
+
 function Orders() {
   const [orders, S] = useState<Order[]>([]);
-  const [filter, F] = useState('ativos');
+  const [orderFilter, setOrderFilter] = useState('todos');
+  const [paymentFilter, setPaymentFilter] = useState('todos');
 
   function statusPagamento(o: any) {
     const recebido = (o.pagamentos || [])
@@ -82,11 +201,9 @@ function Orders() {
       .order('criado_em', { ascending: false })
       .limit(100);
 
-    if (filter !== 'ativos' &&
-        filter !== 'todos' &&
-        filter !== 'pagos' &&
-        filter !== 'pendentes') {
-      q = q.eq('status', filter);
+    // Filtro da situação do pedido
+    if (orderFilter !== 'ativos' && orderFilter !== 'todos') {
+      q = q.eq('status', orderFilter);
     }
 
     const { data, error } = await q;
@@ -98,15 +215,13 @@ function Orders() {
 
     let resultado = data || [];
 
-    // Calcula quanto foi efetivamente recebido
     const valorRecebido = (o: any) =>
       (o.pagamentos || [])
         .filter((p: any) => p.status === 'confirmado')
         .reduce((s: number, p: any) => s + Number(p.valor), 0);
 
-    // EM ANDAMENTO:
-    // Não cancelado e ainda não finalizado (entrega + pagamento).
-    if (filter === 'ativos') {
+    // EM ANDAMENTO
+    if (orderFilter === 'ativos') {
       resultado = resultado.filter(o =>
         o.status !== 'cancelado' &&
         (
@@ -116,15 +231,14 @@ function Orders() {
       );
     }
 
-    // PAGOS
-    if (filter === 'pagos') {
+    // Filtro da situação do pagamento
+    if (paymentFilter === 'pagos') {
       resultado = resultado.filter(o =>
         valorRecebido(o) >= Number(o.total)
       );
     }
 
-    // PENDENTES
-    if (filter === 'pendentes') {
+    if (paymentFilter === 'pendentes') {
       resultado = resultado.filter(o =>
         o.status !== 'cancelado' &&
         valorRecebido(o) < Number(o.total)
@@ -136,7 +250,7 @@ function Orders() {
 
   useEffect(() => {
     load();
-  }, [filter]);
+  }, [orderFilter, paymentFilter]);
 
   useEffect(() => {
     const ch = supabase
@@ -151,7 +265,7 @@ function Orders() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [filter]);
+  }, [orderFilter, paymentFilter]);
 
   async function advance(o: Order) {
     const next: any = {
@@ -207,50 +321,51 @@ function Orders() {
 
       <div className="order-filters">
 
-  <div className="filter-group">
-    <small className="filter-title">SITUAÇÃO DO PEDIDO</small>
+        <div className="filter-group">
+          <small className="filter-title">SITUAÇÃO DO PEDIDO</small>
 
-    <div className="filters">
-        {[
-          ['ativos', 'Em andamento'],
-          ['todos', 'Todos'],
-          ['recebido', 'Recebidos'],
-          ['em_preparo', 'Em preparo'],
-          ['pronto', 'Prontos'],
-          ['entregue', 'Entregues'],
-          ['cancelado', 'Cancelados']
-        ].map(([v, l]) => (
-          <button
-            className={filter === v ? 'chosen' : ''}
-            onClick={() => F(v)}
-            key={v}
-          >
-            {l}
-          </button>
-        ))}
+          <div className="filters">
+            {[
+              ['todos', 'Todos'],
+              ['ativos', 'Em andamento'],
+              ['recebido', 'Recebidos'],
+              ['em_preparo', 'Em preparo'],
+              ['pronto', 'Prontos'],
+              ['entregue', 'Entregues'],
+              ['cancelado', 'Cancelados']
+            ].map(([v, l]) => (
+              <button
+                className={orderFilter === v ? 'chosen' : ''}
+                onClick={() => setOrderFilter(v)}
+                key={v}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <small className="filter-title">SITUAÇÃO DO PAGAMENTO</small>
+
+          <div className="filters">
+            {[
+              ['todos', 'Todos'],
+              ['pagos', 'Pagos'],
+              ['pendentes', 'Pendente de pagamento']
+            ].map(([v, l]) => (
+              <button
+                className={paymentFilter === v ? 'chosen' : ''}
+                onClick={() => setPaymentFilter(v)}
+                key={v}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
-    </div>
-
-    <div className="filter-group">
-      <small className="filter-title">SITUAÇÃO DO PAGAMENTO</small>
-
-      <div className="filters">
-        {[
-          ['pagos', 'Pagos'],
-          ['pendentes', 'Pendente de pagamento']
-        ].map(([v, l]) => (
-          <button
-            className={filter === v ? 'chosen' : ''}
-            onClick={() => F(v)}
-            key={v}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-    </div>
-
-  </div>
 
       <section className="panel">
         <h2>Pedidos</h2>
@@ -259,23 +374,23 @@ function Orders() {
           orders.map(o => (
             <div className="order" key={o.id}>
               <div className="row">
-            <b>Pedido #{o.numero}</b>
+                <b>Pedido #{o.numero}</b>
 
-            <div className="order-statuses">
-              <span className={'pill ' + o.status}>
-                {labelStatus(o.status)}
-              </span>
+                <div className="order-statuses">
+                  <span className={'pill ' + o.status}>
+                    {labelStatus(o.status)}
+                  </span>
 
-              <span className={
-                'payment-status ' +
-                (statusPagamento(o) === 'Pago'
-                  ? 'payment-paid'
-                  : 'payment-pending')
-              }>
-                {statusPagamento(o)}
-              </span>
-            </div>
-          </div>
+                  <span className={
+                    'payment-status ' +
+                    (statusPagamento(o) === 'Pago'
+                      ? 'payment-paid'
+                      : 'payment-pending')
+                  }>
+                    {statusPagamento(o)}
+                  </span>
+                </div>
+              </div>
 
               <div className="order-customer">
                 {o.nome_cliente && (
@@ -341,9 +456,384 @@ function Orders() {
   );
 }
 
-function Products(){const [items,S]=useState<Product[]>([]),[cats,C]=useState<Category[]>([]),[name,N]=useState(''),[price,P]=useState(''),[cat,Cat]=useState(''),[edit,Edit]=useState<string|null>(null),[available,A]=useState(true);async function load(){const [{data:p},{data:c}]=await Promise.all([supabase.from('produtos').select('*').order('nome'),supabase.from('categorias').select('*').eq('ativo',true)]);S((p||[]) as Product[]);C((c||[]) as Category[])}useEffect(()=>{load()},[]);async function save(e:React.FormEvent){e.preventDefault();const payload={nome:name,preco:Number(price),categoria_id:cat||null,disponivel:available,ativo:true};const r=edit?await supabase.from('produtos').update(payload).eq('id',edit):await supabase.from('produtos').insert(payload);if(r.error){alert(r.error.message);return}N('');P('');Cat('');Edit(null);load()}function start(p?:Product){Edit(p?.id||null);N(p?.nome||'');P(p?String(p.preco):'');Cat(p?.categoria_id||'');A(p?.disponivel??true)}return <div className="page"><div className="heading"><div><small>CARDÁPIO</small><h1>Produtos</h1></div><button className="primary" onClick={()=>start()}>+ Produto</button></div><section className="panel"><h2>{edit?'Editar produto':'Cadastrar produto'}</h2><form className="formgrid" onSubmit={save}><label>Nome<input value={name} onChange={e=>N(e.target.value)} required/></label><label>Preço<input type="number" min="0" step="0.01" value={price} onChange={e=>P(e.target.value)} required/></label><label>Categoria<select value={cat} onChange={e=>Cat(e.target.value)}><option value="">Sem categoria</option>{cats.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></label><label className="check"><input type="checkbox" checked={available} onChange={e=>A(e.target.checked)}/> Disponível</label><button className="primary">Salvar</button>{edit&&<button type="button" className="secondary" onClick={()=>start()}>Cancelar edição</button>}</form></section><section className="panel"><h2>Produtos cadastrados</h2>{items.map(p=><div className="row" key={p.id}><div><b>{p.nome}</b><small>{brl(p.preco)} · {p.disponivel?'Disponível':'Indisponível'}</small></div><div className="actions"><button className="secondary" onClick={()=>start(p)}>Editar</button><button className="secondary" onClick={async()=>{await supabase.from('produtos').update({disponivel:!p.disponivel}).eq('id',p.id);load()}}>{p.disponivel?'Indisponibilizar':'Disponibilizar'}</button></div></div>)}</section><section className="panel"><h2>Categorias</h2><CategoryManager onChange={load}/></section></div>}
-function CategoryManager({onChange}:{onChange:()=>void}){const [name,N]=useState('');async function add(e:React.FormEvent){e.preventDefault();const {error}=await supabase.from('categorias').insert({nome:name});if(error)alert(error.message);else{N('');onChange()}}return <form className="inline" onSubmit={add}><input placeholder="Nova categoria" value={name} onChange={e=>N(e.target.value)} required/><button className="primary">Adicionar</button></form>}
 
+function Products() {
+  const [items, S] = useState<Product[]>([]);
+  const [cats, C] = useState<Category[]>([]);
+  const [name, N] = useState('');
+  const [price, P] = useState('');
+  const [cat, Cat] = useState('');
+  const [edit, Edit] = useState<string | null>(null);
+  const [available, A] = useState(true);
+
+  async function load() {
+    const [{ data: p }, { data: c }] = await Promise.all([
+      supabase.from('produtos').select('*').order('nome'),
+      supabase.from('categorias').select('*').eq('ativo', true).order('nome')
+    ]);
+
+    S((p || []) as Product[]);
+    C((c || []) as Category[]);
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+
+    const payload = {
+      nome: name,
+      preco: Number(price),
+      categoria_id: cat || null,
+      disponivel: available,
+      ativo: true
+    };
+
+    const r = edit
+      ? await supabase.from('produtos').update(payload).eq('id', edit)
+      : await supabase.from('produtos').insert(payload);
+
+    if (r.error) {
+      alert(r.error.message);
+      return;
+    }
+
+    N('');
+    P('');
+    Cat('');
+    Edit(null);
+    A(true);
+    load();
+  }
+
+  function start(p?: Product) {
+    Edit(p?.id || null);
+    N(p?.nome || '');
+    P(p ? String(p.preco) : '');
+    Cat(p?.categoria_id || '');
+    A(p?.disponivel ?? true);
+  }
+
+  // Separa os produtos por categoria
+  const grouped = cats
+    .map(c => ({
+      category: c,
+      products: items.filter(p => p.categoria_id === c.id)
+    }))
+    .filter(g => g.products.length > 0);
+
+  const uncategorized = items.filter(
+    p => !cats.some(c => c.id === p.categoria_id)
+  );
+
+  function renderProduct(p: Product) {
+    return (
+      <div className="row" key={p.id}>
+        <div>
+          <b>{p.nome}</b>
+          <small>
+            {brl(p.preco)} · {p.disponivel ? 'Disponível' : 'Indisponível'}
+          </small>
+        </div>
+
+        <div className="actions">
+          <button className="secondary" onClick={() => start(p)}>
+            Editar
+          </button>
+
+          <button
+            className={p.disponivel ? 'secondary' : 'danger'}
+            onClick={async () => {
+              const { error } = await supabase
+                .from('produtos')
+                .update({ disponivel: !p.disponivel })
+                .eq('id', p.id);
+
+              if (error) {
+                alert(error.message);
+                return;
+              }
+
+              load();
+            }}
+          >
+            {p.disponivel ? 'Indisponibilizar' : 'Disponibilizar'}
+          </button>
+
+          <button
+            className="danger"
+            onClick={async () => {
+              const confirmed = window.confirm(
+                `Deseja realmente excluir o produto "${p.nome}"?`
+              );
+
+              if (!confirmed) return;
+
+              const { error } = await supabase
+                .from('produtos')
+                .delete()
+                .eq('id', p.id);
+
+              if (error) {
+                alert('Não foi possível excluir o produto: ' + error.message);
+                return;
+              }
+
+              if (edit === p.id) {
+                start();
+              }
+
+              load();
+            }}
+          >
+            Excluir
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
+      <div className="heading">
+        <div>
+          <small>CARDÁPIO</small>
+          <h1>Produtos</h1>
+        </div>
+      </div>
+
+      <section className="panel">
+        <h2>{edit ? 'Editar produto' : 'Cadastrar produto'}</h2>
+
+        <form className="formgrid" onSubmit={save}>
+          <label>
+            Nome
+            <input
+              value={name}
+              onChange={e => N(e.target.value)}
+              required
+            />
+          </label>
+
+          <label>
+            Preço
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={price}
+              onChange={e => P(e.target.value)}
+              required
+            />
+          </label>
+
+          <label>
+            Categoria
+            <select value={cat} onChange={e => Cat(e.target.value)}>
+              <option value="">Sem categoria</option>
+              {cats.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={available}
+              onChange={e => A(e.target.checked)}
+            />
+            Disponível
+          </label>
+
+          <button className="primary">Salvar</button>
+
+          {edit && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => start()}
+            >
+              Cancelar edição
+            </button>
+          )}
+        </form>
+      </section>
+
+      <section className="panel">
+        <h2>Produtos cadastrados</h2>
+
+        {items.length ? (
+          <>
+            {grouped.map(g => (
+              <div key={g.category.id}>
+                <h3>{g.category.nome}</h3>
+                {g.products.map(renderProduct)}
+              </div>
+            ))}
+
+            {uncategorized.length > 0 && (
+              <div>
+                <h3>Sem categoria</h3>
+                {uncategorized.map(renderProduct)}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="empty">Nenhum produto cadastrado.</p>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Cadastrar categoria</h2>
+        <CategoryManager categories={cats} onChange={load} />
+      </section>
+    </div>
+  );
+}
+function CategoryManager({
+  categories,
+  onChange
+}: {
+  categories: Category[];
+  onChange: () => void;
+}) {
+  const [name, N] = useState('');
+  const [edit, Edit] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+
+    const nome = name.trim();
+
+    if (!nome) return;
+
+    const { error } = edit
+      ? await supabase
+          .from('categorias')
+          .update({ nome })
+          .eq('id', edit)
+      : await supabase
+          .from('categorias')
+          .insert({ nome });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    N('');
+    Edit(null);
+    onChange();
+  }
+
+  function startEdit(c: Category) {
+    Edit(c.id);
+    N(c.nome);
+  }
+
+  async function remove(c: Category) {
+    const confirmed = window.confirm(
+      `Deseja realmente excluir a categoria "${c.nome}"? Os produtos vinculados passarão para Sem categoria.`
+    );
+
+    if (!confirmed) return;
+
+    // Remove o vínculo dos produtos com a categoria
+    const { error: productError } = await supabase
+      .from('produtos')
+      .update({ categoria_id: null })
+      .eq('categoria_id', c.id);
+
+    if (productError) {
+      alert('Erro ao atualizar os produtos: ' + productError.message);
+      return;
+    }
+
+    // Desativa a categoria, preservando o registro no banco
+    const { error } = await supabase
+      .from('categorias')
+      .update({ ativo: false })
+      .eq('id', c.id);
+
+    if (error) {
+      alert('Erro ao excluir categoria: ' + error.message);
+      onChange();
+      return;
+    }
+
+    if (edit === c.id) {
+      Edit(null);
+      N('');
+    }
+
+    onChange();
+  }
+
+  return (
+    <div>
+      <form className="inline" onSubmit={save}>
+        <input
+          placeholder="Nome da categoria"
+          value={name}
+          onChange={e => N(e.target.value)}
+          required
+        />
+
+        <button className="primary">
+          {edit ? 'Salvar alteração' : 'Adicionar categoria'}
+        </button>
+
+        {edit && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              Edit(null);
+              N('');
+            }}
+          >
+            Cancelar
+          </button>
+        )}
+      </form>
+
+      <div style={{ marginTop: '16px' }}>
+        <h3>Categorias cadastradas</h3>
+
+        {categories.length ? (
+          categories.map(c => (
+            <div className="row" key={c.id}>
+              <b>{c.nome}</b>
+
+              <div className="actions">
+                <button
+                  className="secondary"
+                  onClick={() => startEdit(c)}
+                >
+                  Editar
+                </button>
+
+                <button
+                  className="danger"
+                  onClick={() => remove(c)}
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="empty">Nenhuma categoria cadastrada.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function NewOrder() {
   const [products, P] = useState<Product[]>([]);
@@ -363,7 +853,6 @@ function NewOrder() {
           .from('produtos')
           .select('*')
           .eq('ativo', true)
-          .eq('disponivel', true)
           .order('nome');
 
       const { data: categoriesData, error: categoriesError } =
@@ -392,6 +881,9 @@ function NewOrder() {
   const total = products.reduce(
     (s, p) => s + (cart[p.id] || 0) * Number(p.preco),
     0
+  );
+  const cartProducts = products.filter(
+    p => (cart[p.id] || 0) > 0
   );
 
   // Agrupar produtos por categoria
@@ -444,14 +936,24 @@ function NewOrder() {
   // Componente visual de cada produto
   function ProductItem({ p }: { p: Product }) {
     return (
-      <div className="menuitem" key={p.id}>
+      <div
+        className="menuitem"
+        key={p.id}
+        style={{
+          opacity: p.disponivel ? 1 : 0.4
+        }}
+      >
         <div>
           <b>{p.nome}</b>
-          <small>{brl(p.preco)}</small>
+          <small>
+            {brl(p.preco)}
+            {!p.disponivel && ' · Indisponível'}
+          </small>
         </div>
 
         <div className="qty">
           <button
+            disabled={!p.disponivel}
             onClick={() =>
               C({
                 ...cart,
@@ -465,6 +967,7 @@ function NewOrder() {
           <b>{cart[p.id] || 0}</b>
 
           <button
+            disabled={!p.disponivel}
             onClick={() =>
               C({
                 ...cart,
@@ -518,7 +1021,71 @@ function NewOrder() {
           )}
 
         </div>
+                {cartProducts.length > 0 && (
+          <div className="cart-summary">
+            <div className="cart-summary-header">
+              <h2>Resumo do pedido</h2>
 
+              <button
+                type="button"
+                className="secondary cart-clear-button"
+                onClick={() => C({})}
+              >
+                Esvaziar carrinho
+              </button>
+            </div>
+
+            {cartProducts.map(p => (
+              <div className="cart-item" key={p.id}>
+                <div className="cart-item-info">
+                  <b>{p.nome}</b>
+                  <small>
+                    {brl(p.preco)} cada
+                  </small>
+                </div>
+
+                <div className="cart-item-controls">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() =>
+                      C({
+                        ...cart,
+                        [p.id]: Math.max(0, cart[p.id] - 1)
+                      })
+                    }
+                  >
+                    <Minus size={14} />
+                  </button>
+
+                  <b>{cart[p.id]}x</b>
+
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() =>
+                      C({
+                        ...cart,
+                        [p.id]: cart[p.id] + 1
+                      })
+                    }
+                  >
+                    <Plus size={14} />
+                  </button>
+
+                  <b className="cart-subtotal">
+                    {brl(Number(p.preco) * cart[p.id])}
+                  </b>
+                </div>
+              </div>
+            ))}
+
+            <div className="cart-total">
+              <span>Total do pedido</span>
+              <b>{brl(total)}</b>
+            </div>
+          </div>
+        )}
         <div className="formgrid">
           <label>
             Nome do cliente
@@ -760,7 +1327,19 @@ function UsersPage() {
     setLoadingUsers(false);
 
     if (error) {
-      alert('Erro ao carregar usuários: ' + error.message);
+      console.error('Erro ao carregar usuários:', error);
+
+      let detalhes = error.message;
+
+      try {
+        const resposta = await error.context.json();
+        detalhes = resposta.error || resposta.message || JSON.stringify(resposta);
+      } catch {
+        // Mantém a mensagem original caso não consiga ler a resposta.
+      }
+
+      alert('Erro ao carregar usuários: ' + detalhes);
+      setLoadingUsers(false);
       return;
     }
 
@@ -862,24 +1441,24 @@ function UsersPage() {
   }
 
   async function changePassword(e: React.FormEvent) {
-    e.preventDefault();
+  e.preventDefault();
 
-    if (!selectedUser) return;
+  if (!selectedUser) return;
 
-    if (newPassword.length < 8) {
-      alert('A senha deve ter pelo menos 8 caracteres.');
-      return;
-    }
+  if (newPassword.length < 8) {
+    alert('A senha deve ter pelo menos 8 caracteres.');
+    return;
+  }
 
-    const confirmed = window.confirm(
-      `Deseja realmente alterar a senha de ${selectedUser.nome}?`
-    );
+  const confirmed = window.confirm(
+    `Deseja realmente alterar a senha de ${selectedUser.nome}?`
+  );
 
-    if (!confirmed) return;
+  if (!confirmed) return;
 
-    setChangingPassword(true);
+  setChangingPassword(true);
 
-    const { data, error } = await supabase.functions.invoke(
+  const { data, error } = await supabase.functions.invoke(
       'gerenciar-usuarios',
       {
         body: {
@@ -899,6 +1478,19 @@ function UsersPage() {
 
     if (data?.error) {
       alert(data.error);
+      return;
+    }
+
+    // Verifica se o administrador alterou a própria senha.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const currentUserId = sessionData.session?.user.id;
+
+    if (selectedUser.id === currentUserId) {
+      alert('Sua senha foi alterada! Faça login novamente com a nova senha.');
+
+      await supabase.auth.signOut();
+
+      window.location.href = '/login';
       return;
     }
 
