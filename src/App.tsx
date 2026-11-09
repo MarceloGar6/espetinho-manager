@@ -1440,6 +1440,7 @@ function Reports() {
           b.quantidade - a.quantidade ||
           b.faturamento - a.faturamento
         )
+        .slice(0, 10)
     );
 
     const totalSold = validOrders.reduce(
