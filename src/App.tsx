@@ -1477,10 +1477,70 @@ function Reports() {
     load();
   }, []);
 
+  
+  const chartSales = (() => {
+    // Até 31 dias: mostrar cada dia
+    if (dailySales.length <= 31) {
+      return dailySales.map(item => ({
+        data: item.data,
+        label: item.data.split('-').reverse().join('/'),
+        total: item.total
+      }));
+    }
+
+    // De 32 a 90 dias: agrupar por semana
+    if (dailySales.length <= 90) {
+      const grupos: Record<string, number> = {};
+
+      dailySales.forEach(item => {
+        const data = new Date(`${item.data}T12:00:00`);
+        data.setDate(data.getDate() - data.getDay());
+
+        const chave =
+          `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+
+        grupos[chave] = (grupos[chave] || 0) + item.total;
+      });
+
+      return Object.entries(grupos)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([data, total]) => ({
+          data,
+          label: `Semana ${data.slice(8, 10)}/${data.slice(5, 7)}`,
+          total
+        }));
+    }
+
+    // Acima de 90 dias: agrupar por mês
+    const grupos: Record<string, number> = {};
+
+    dailySales.forEach(item => {
+      const chave = item.data.slice(0, 7);
+      grupos[chave] = (grupos[chave] || 0) + item.total;
+    });
+
+    return Object.entries(grupos)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([data, total]) => {
+        const [ano, mes] = data.split('-');
+
+        return {
+          data,
+          label: new Date(Number(ano), Number(mes) - 1, 1)
+            .toLocaleDateString('pt-BR', {
+              month: 'short',
+              year: 'numeric'
+            }),
+          total
+        };
+      });
+  })();
+
   const maxDailySales = Math.max(
     1,
-    ...dailySales.map(item => item.total)
+    ...chartSales.map(item => item.total)
   );
+
 
   return (
     <div className="page">
@@ -1555,46 +1615,52 @@ function Reports() {
           value={String(cancelled)}
         />
       </div>
-      <section className="panel">
-        <h2>Vendas por dia</h2>
+      
+    <section className="panel">
+      <h2>Vendas por dia</h2>
 
-        {dailySales.length === 0 ? (
-          <div className="empty">
-            Nenhuma venda neste período.
-          </div>
-        ) : (
-          dailySales.map(item => (
-            <div key={item.data} style={{ marginBottom: 16 }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: 6
-              }}>
-                <b>
-                  {item.data.split('-').reverse().join('/')}
-                </b>
+      {dailySales.length === 0 ? (
+        <div className="empty">
+          Nenhuma venda neste período.
+        </div>
+      ) : (
+        chartSales.map(item => (
+          <div key={item.data} style={{ marginBottom: 16 }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginBottom: 6
+            }}>
+              <b>
+                {item.label}
+              </b>
 
-                <b>{brl(item.total)}</b>
-              </div>
-
-              <div style={{
-                width: '100%',
-                height: 12,
-                background: 'var(--border)',
-                borderRadius: 10,
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  width: `${(item.total / maxDailySales) * 100}%`,
-                  height: '100%',
-                  background: 'var(--primary)',
-                  borderRadius: 10
-                }} />
-              </div>
+              <b>{brl(item.total)}</b>
             </div>
-          ))
-        )}
-      </section>
+
+            <div style={{
+              width: '100%',
+              height: 12,
+              background: '#e5e7eb',
+              borderRadius: 10,
+              overflow: 'hidden'
+            }}>
+              <div
+                title={brl(item.total)}
+                style={{
+                  width: `${Math.max((item.total / maxDailySales) * 100, 1)}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #4ade80, #16a34a)',
+                  borderRadius: 10,
+                  transition: 'width 0.35s ease'
+                }}
+              />
+            </div>
+          </div>
+        ))
+      )}
+    </section>
+
       <section className="panel">
         <h2>Produtos mais vendidos</h2>
 
