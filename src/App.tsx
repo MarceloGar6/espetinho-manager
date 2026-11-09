@@ -1146,7 +1146,7 @@ function OrderDetail() {
     const [{ data: o }, { data: m }] = await Promise.all([
       supabase
         .from('pedidos')
-        .select('*,itens_pedido(*),pagamentos(*,formas_pagamento(nome))')
+        .select('*,itens_pedido(*,produtos(categoria_id,categorias(nome))),pagamentos(*,formas_pagamento(nome))')
         .eq('id', id)
         .single(),
 
@@ -1170,6 +1170,20 @@ function OrderDetail() {
     order?.pagamentos
       ?.filter((p: any) => p.status === 'confirmado')
       .reduce((s: number, p: any) => s + Number(p.valor), 0) || 0;
+      const groupedItems: Record<string, any[]> = (order?.itens_pedido || []).reduce(
+        (grupos: Record<string, any[]>, item: any) => {
+          const categoria = item.produtos?.categorias?.nome || 'Sem categoria';
+
+          if (!grupos[categoria]) {
+            grupos[categoria] = [];
+          }
+
+          grupos[categoria].push(item);
+
+          return grupos;
+        },
+        {} as Record<string, any[]>
+      );
 
   async function pay(e: React.FormEvent) {
     e.preventDefault();
@@ -1227,18 +1241,26 @@ function OrderDetail() {
       </section>
 
       <section className="panel">
-        <h2>Itens</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 700 }}>Itens</h2>
 
-        {order.itens_pedido.map((i: any) => (
-          <div className="row" key={i.id}>
-            <span>{i.quantidade}× {i.nome_produto}</span>
-            <b>{brl(i.subtotal)}</b>
+        {Object.entries(groupedItems).map(([categoria, itens]) => (
+          <div key={categoria} style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, marginBottom: 10, fontWeight: 600 }}>
+              {categoria}
+            </h3>
+
+            {itens.map((i: any) => (
+              <div className="row" key={i.id}>
+                <span>{i.quantidade}× {i.nome_produto}</span>
+                <b>{brl(i.subtotal)}</b>
+              </div>
+            ))}
           </div>
         ))}
 
         <div className="total">
-          <span>Total</span>
-          <b>{brl(order.total)}</b>
+          <span style={{ fontSize: 16, fontWeight: 700 }}>Total</span>
+          <b style={{ fontSize: 20 }}>{brl(order.total)}</b>
         </div>
       </section>
 
