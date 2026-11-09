@@ -1300,9 +1300,230 @@ function OrderDetail() {
     </div>
   );
 }
-function Reports(){const [start,S]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)),[end,E]=useState(new Date().toISOString().slice(0,10)),[sum,Su]=useState(0),[count,C]=useState(0);async function load(){const from=new Date(start+'T00:00:00-03:00').toISOString(),to=new Date(end+'T23:59:59-03:00').toISOString();const [{data:p},{count:n}]=await Promise.all([supabase.from('pagamentos').select('valor').eq('status','confirmado').gte('criado_em',from).lte('criado_em',to),supabase.from('pedidos').select('*',{count:'exact',head:true}).gte('criado_em',from).lte('criado_em',to).neq('status','cancelado')]);Su((p||[]).reduce((s,x)=>s+Number(x.valor),0));C(n||0)}useEffect(()=>{load()},[]);return <div className="page"><div className="heading"><div><small>ADMINISTRAÇÃO</small><h1>Relatórios</h1></div></div><section className="panel"><div className="formgrid"><label>De<input type="date" value={start} onChange={e=>S(e.target.value)}/></label><label>Até<input type="date" value={end} onChange={e=>E(e.target.value)}/></label><button className="primary" onClick={load}>Filtrar</button></div></section><div className="stats"><Stat label="Total recebido" value={brl(sum)}/><Stat label="Pedidos não cancelados" value={String(count)}/></div></div>}
+function Reports() {
+  const [start, S] = useState(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      .toISOString().slice(0, 10)
+  );
 
+  const [end, E] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+
+  const [sum, Su] = useState(0);
+  const [received, R] = useState(0);
+  const [pending, P] = useState(0);
+  const [count, C] = useState(0);
+  const [cancelled, Ca] = useState(0);
+  const [average, A] = useState(0);
+  const [busy, B] = useState(false);
+  const [topProducts, TP] = useState<
+    { nome: string; quantidade: number; faturamento: number }[]
+  >([]);
+
+  async function load() {
+    if (!start || !end || start > end) {
+      alert('Informe um período válido.');
+      return;
+    }
+
+    B(true);
+
+    const from = new Date(start + 'T00:00:00-03:00').toISOString();
+    const to = new Date(end + 'T23:59:59-03:00').toISOString();
+
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select('id, total, status, itens_pedido(quantidade, nome_produto, subtotal), pagamentos(valor, status)')
+      .gte('criado_em', from)
+      .lte('criado_em', to);
+
+    B(false);
+
+    if (error) {
+      alert('Erro ao carregar relatório: ' + error.message);
+      return;
+    }
+
+    const orders = data || [];
+
+    const validOrders = orders.filter(
+      p => p.status !== 'cancelado'
+    );
+
+    const cancelledOrders = orders.filter(
+      p => p.status === 'cancelado'
+    );
+
+    const ranking: Record<
+      string,
+      { quantidade: number; faturamento: number }
+    > = {};
+
+    validOrders.forEach(pedido => {
+      (pedido.itens_pedido || []).forEach(item => {
+        const nome = item.nome_produto || 'Produto';
+
+        if (!ranking[nome]) {
+          ranking[nome] = {
+            quantidade: 0,
+            faturamento: 0
+          };
+        }
+
+        ranking[nome].quantidade += Number(item.quantidade || 0);
+        ranking[nome].faturamento += Number(item.subtotal || 0);
+      });
+    });
+
+    TP(
+      Object.entries(ranking)
+        .map(([nome, valores]) => ({
+          nome,
+          ...valores
+        }))
+        .sort((a, b) =>
+          b.quantidade - a.quantidade ||
+          b.faturamento - a.faturamento
+        )
+    );
+
+    const totalSold = validOrders.reduce(
+      (s, p) => s + Number(p.total || 0),
+      0
+    );
+
+    const totalReceived = validOrders.reduce(
+      (s, p) => s + (p.pagamentos || [])
+        .filter(pg => pg.status === 'confirmado')
+        .reduce((v, pg) => v + Number(pg.valor || 0), 0),
+      0
+    );
+
+    const totalPending = Math.max(
+      0,
+      totalSold - totalReceived
+    );
+
+    Su(totalSold);
+    R(totalReceived);
+    P(totalPending);
+    C(validOrders.length);
+    Ca(cancelledOrders.length);
+
+    A(
+      validOrders.length > 0
+        ? totalSold / validOrders.length
+        : 0
+    );
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <div className="page">
+      <div className="heading">
+        <div>
+          <small>ADMINISTRAÇÃO</small>
+          <h1>Relatórios</h1>
+          <p>Acompanhe o desempenho do seu negócio.</p>
+        </div>
+      </div>
+
+      <section className="panel">
+        <h2>Período do relatório</h2>
+
+        <div className="formgrid">
+          <label>
+            De
+            <input
+              type="date"
+              value={start}
+              onChange={e => S(e.target.value)}
+            />
+          </label>
+
+          <label>
+            Até
+            <input
+              type="date"
+              value={end}
+              onChange={e => E(e.target.value)}
+            />
+          </label>
+
+          <button
+            className="primary"
+            onClick={load}
+            disabled={busy}
+          >
+            {busy ? 'Carregando...' : 'Filtrar'}
+          </button>
+        </div>
+      </section>
+
+      <div className="stats">
+        <Stat
+          label="Total vendido"
+          value={brl(sum)}
+        />
+
+        <Stat
+          label="Total recebido"
+          value={brl(received)}
+        />
+
+        <Stat
+          label="Pagamento pendente"
+          value={brl(pending)}
+        />
+
+        <Stat
+          label="Pedidos realizados"
+          value={String(count)}
+        />
+
+        <Stat
+          label="Ticket médio"
+          value={brl(average)}
+        />
+
+        <Stat
+          label="Pedidos cancelados"
+          value={String(cancelled)}
+        />
+      </div>
+      <section className="panel">
+        <h2>Produtos mais vendidos</h2>
+
+        {topProducts.length === 0 ? (
+          <div className="empty">
+            Nenhuma venda de produtos neste período.
+          </div>
+        ) : (
+          topProducts.map((p, index) => (
+            <div className="row" key={p.nome}>
+              <div>
+                <b>{index + 1}º - {p.nome}</b>
+                <small>
+                  {p.quantidade} unidades vendidas
+                </small>
+              </div>
+
+              <b>{brl(p.faturamento)}</b>
+            </div>
+          ))
+        )}
+      </section>
+    </div>
+  );
+}
 function UsersPage() {
+  const [topProducts, TP] = useState<
+    { nome: string; quantidade: number; faturamento: number }[]
+  >([]);
   const [users, setUsers] = useState<any[]>([]);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
