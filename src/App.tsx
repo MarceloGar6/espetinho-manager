@@ -903,6 +903,16 @@ function NewOrder() {
   );
 
   async function submit() {
+    if (!customerName.trim()) {
+      alert('Informe o nome do cliente.');
+      return;
+    }
+
+    if (!tableNumber.trim()) {
+      alert('Informe o número da mesa.');
+      return;
+    }
+
     const itens = products
       .filter(p => cart[p.id] > 0)
       .map(p => ({
@@ -1088,22 +1098,24 @@ function NewOrder() {
         )}
         <div className="formgrid">
           <label>
-            Nome do cliente
+            Nome do cliente *
             <input
               type="text"
               value={customerName}
               onChange={e => setCustomerName(e.target.value)}
               placeholder="Ex.: João da Silva"
+              required
             />
           </label>
 
           <label>
-            Número da mesa
+            Número da mesa *
             <input
               type="text"
               value={tableNumber}
               onChange={e => setTableNumber(e.target.value)}
               placeholder="Ex.: 02"
+              required
             />
           </label>
         </div>
