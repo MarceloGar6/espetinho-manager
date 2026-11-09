@@ -19,7 +19,7 @@ function AppShell({
   const links = [
     ['/', 'Início', Home],
     ['/pedidos', 'Pedidos', ClipboardList],
-    ['/novo', 'Novo', PlusCircle],
+    ['/novo', 'Novo Pedido', PlusCircle],
 
     ...(profile.papel === 'administrador'
       ? [
