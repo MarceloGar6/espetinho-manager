@@ -14,7 +14,7 @@ Node.js 20+ e conta Supabase.
 4. No Supabase, abra Authentication > Users > Add user e crie o primeiro usuário.
 5. Copie o UUID do usuário e execute no SQL Editor:
 
-   `update public.perfis set papel='administrador' where id='UUID_DO_USUARIO';`
+   `update public.perfis set papel='administrador', nome='NOME_DO_USUARIO' where id='UUID_DO_USUARIO';`
 
 6. Instale as dependências:
 
@@ -36,18 +36,6 @@ Node.js 20+ e conta Supabase.
 8. Inicie o sistema:
 
    `npm run dev`
-
-## Gerenciamento de usuários
-
-O sistema possui uma área para gerenciamento de usuários, permitindo listar funcionários, enviar convites por e-mail e ativar ou desativar contas.
-
-Essa funcionalidade utiliza a Edge Function `gerenciar-usuarios`, localizada em `supabase/functions/gerenciar-usuarios/index.ts`.
-
-A configuração e publicação da função são realizadas automaticamente pelo script `configurar-supabase.ps1`, por meio do comando:
-
-`npm run configurar:supabase`
-
-A função utiliza a variável `APP_URL` para definir o endereço de redirecionamento dos convites por e-mail. Durante o desenvolvimento, utilize `http://localhost:5173`. Na publicação, utilize o endereço do sistema hospedado.
 
 ## Build
 
