@@ -205,7 +205,12 @@ function Orders() {
         </Link>
       </div>
 
-      <div className="filters">
+      <div className="order-filters">
+
+  <div className="filter-group">
+    <small className="filter-title">SITUAÇÃO DO PEDIDO</small>
+
+    <div className="filters">
         {[
           ['ativos', 'Em andamento'],
           ['todos', 'Todos'],
@@ -213,7 +218,24 @@ function Orders() {
           ['em_preparo', 'Em preparo'],
           ['pronto', 'Prontos'],
           ['entregue', 'Entregues'],
-          ['cancelado', 'Cancelados'],
+          ['cancelado', 'Cancelados']
+        ].map(([v, l]) => (
+          <button
+            className={filter === v ? 'chosen' : ''}
+            onClick={() => F(v)}
+            key={v}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <div className="filter-group">
+      <small className="filter-title">SITUAÇÃO DO PAGAMENTO</small>
+
+      <div className="filters">
+        {[
           ['pagos', 'Pagos'],
           ['pendentes', 'Pendente de pagamento']
         ].map(([v, l]) => (
@@ -226,6 +248,9 @@ function Orders() {
           </button>
         ))}
       </div>
+    </div>
+
+  </div>
 
       <section className="panel">
         <h2>Pedidos</h2>
