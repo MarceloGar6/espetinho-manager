@@ -76,18 +76,62 @@ function Orders() {
   }
 
   async function load() {
-    let q = supabase.from('pedidos').select('*, pagamentos(valor,status)')
+    let q = supabase
+      .from('pedidos')
+      .select('*, pagamentos(valor,status)')
       .order('criado_em', { ascending: false })
       .limit(100);
 
-    if (filter === 'ativos') {
-      q = q.not('status', 'in', '(entregue,cancelado)');
-    } else if (filter !== 'todos') {
+    if (filter !== 'ativos' &&
+        filter !== 'todos' &&
+        filter !== 'pagos' &&
+        filter !== 'pendentes') {
       q = q.eq('status', filter);
     }
 
-    const { data } = await q;
-    S((data || []) as Order[]);
+    const { data, error } = await q;
+
+    if (error) {
+      alert('Erro ao carregar pedidos: ' + error.message);
+      return;
+    }
+
+    let resultado = data || [];
+
+    // Calcula quanto foi efetivamente recebido
+    const valorRecebido = (o: any) =>
+      (o.pagamentos || [])
+        .filter((p: any) => p.status === 'confirmado')
+        .reduce((s: number, p: any) => s + Number(p.valor), 0);
+
+    // EM ANDAMENTO:
+    // Não cancelado e ainda não finalizado (entrega + pagamento).
+    if (filter === 'ativos') {
+      resultado = resultado.filter(o =>
+        o.status !== 'cancelado' &&
+        (
+          o.status !== 'entregue' ||
+          valorRecebido(o) < Number(o.total)
+        )
+      );
+    }
+
+    // PAGOS
+    if (filter === 'pagos') {
+      resultado = resultado.filter(o =>
+        valorRecebido(o) >= Number(o.total)
+      );
+    }
+
+    // PENDENTES
+    if (filter === 'pendentes') {
+      resultado = resultado.filter(o =>
+        o.status !== 'cancelado' &&
+        valorRecebido(o) < Number(o.total)
+      );
+    }
+
+    S(resultado as Order[]);
   }
 
   useEffect(() => {
@@ -169,7 +213,9 @@ function Orders() {
           ['em_preparo', 'Em preparo'],
           ['pronto', 'Prontos'],
           ['entregue', 'Entregues'],
-          ['cancelado', 'Cancelados']
+          ['cancelado', 'Cancelados'],
+          ['pagos', 'Pagos'],
+          ['pendentes', 'Pendente de pagamento']
         ].map(([v, l]) => (
           <button
             className={filter === v ? 'chosen' : ''}
@@ -561,9 +607,15 @@ function OrderDetail() {
           <p>{date(order.criado_em)}</p>
         </div>
 
-        <span className={'pill ' + order.status}>
-          {labelStatus(order.status)}
-        </span>
+        <div className="order-detail-actions">
+          <span className={'pill ' + order.status}>
+            {labelStatus(order.status)}
+          </span>
+
+          <Link to="/pedidos" className="secondary">
+            ← Voltar aos pedidos
+          </Link>
+        </div>
       </div>
 
       <section className="panel">
