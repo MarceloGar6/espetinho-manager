@@ -1320,6 +1320,9 @@ function Reports() {
   const [topProducts, TP] = useState<
     { nome: string; quantidade: number; faturamento: number }[]
   >([]);
+  const [dailySales, DS] = useState<
+    { data: string; total: number }[]
+  >([]);
 
   async function load() {
     if (!start || !end || start > end) {
@@ -1334,7 +1337,7 @@ function Reports() {
 
     const { data, error } = await supabase
       .from('pedidos')
-      .select('id, total, status, itens_pedido(quantidade, nome_produto, subtotal), pagamentos(valor, status)')
+      .select('id, criado_em, total, status, itens_pedido(quantidade, nome_produto, subtotal), pagamentos(valor, status)')
       .gte('criado_em', from)
       .lte('criado_em', to);
 
@@ -1353,6 +1356,20 @@ function Reports() {
 
     const cancelledOrders = orders.filter(
       p => p.status === 'cancelado'
+    );
+
+    const daily: Record<string, number> = {};
+
+    validOrders.forEach(pedido => {
+      const dia = pedido.criado_em.slice(0, 10);
+
+      daily[dia] = (daily[dia] || 0) + Number(pedido.total || 0);
+    });
+
+    DS(
+      Object.entries(daily)
+        .map(([data, total]) => ({ data, total }))
+        .sort((a, b) => a.data.localeCompare(b.data))
     );
 
     const ranking: Record<
@@ -1421,6 +1438,11 @@ function Reports() {
   useEffect(() => {
     load();
   }, []);
+
+  const maxDailySales = Math.max(
+    1,
+    ...dailySales.map(item => item.total)
+  );
 
   return (
     <div className="page">
@@ -1495,6 +1517,46 @@ function Reports() {
           value={String(cancelled)}
         />
       </div>
+      <section className="panel">
+        <h2>Vendas por dia</h2>
+
+        {dailySales.length === 0 ? (
+          <div className="empty">
+            Nenhuma venda neste período.
+          </div>
+        ) : (
+          dailySales.map(item => (
+            <div key={item.data} style={{ marginBottom: 16 }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: 6
+              }}>
+                <b>
+                  {item.data.split('-').reverse().join('/')}
+                </b>
+
+                <b>{brl(item.total)}</b>
+              </div>
+
+              <div style={{
+                width: '100%',
+                height: 12,
+                background: 'var(--border)',
+                borderRadius: 10,
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${(item.total / maxDailySales) * 100}%`,
+                  height: '100%',
+                  background: 'var(--primary)',
+                  borderRadius: 10
+                }} />
+              </div>
+            </div>
+          ))
+        )}
+      </section>
       <section className="panel">
         <h2>Produtos mais vendidos</h2>
 
