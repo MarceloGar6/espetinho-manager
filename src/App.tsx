@@ -12,7 +12,7 @@ function AppShell({
   const nav = useNavigate();
 
   async function logout() {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     nav('/login');
   }
 
@@ -2055,8 +2055,181 @@ function PrimeiroAcesso() {
 }
 
 function Guard({profile,children,admin=false}:{profile:Profile;children:React.ReactNode;admin?:boolean}){if(admin&&profile.papel!=='administrador')return <Navigate to="/"/>;return <>{children}</>}
-export default function App(){const [session,S]=useState<any>(null),[profile,P]=useState<Profile|null>(null),[loading,L]=useState(true);useEffect(()=>{supabase.auth.getSession().then(async({data})=>{S(data.session);if(data.session){const {data:p}=await supabase.from('perfis').select('*').eq('id',data.session.user.id).single();P(p)}L(false)});const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{S(s);if(!s){P(null);L(false)}else setTimeout(()=>supabase.from('perfis').select('*').eq('id',s.user.id).single().then(({data})=>{P(data);L(false)}),0)});return()=>subscription.unsubscribe()},[]);if(!configured)return <div className="login"><div className="loginbox"><h1>Configure o Supabase</h1><p>Crie um arquivo .env com VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY. Consulte o README.</p></div></div>;if(loading)return <div className="login">Carregando...</div>;return <Routes>
-  <Route path="/primeiro-acesso" element={<PrimeiroAcesso/>}/>
-  <Route path="/login" element={session?<Navigate to="/"/>:<Login/>}/><Route path="*" element={!session?<Navigate to="/login"/>:!profile||!profile.ativo?<div className="login">Perfil não ativo. Procure o administrador.</div>:<AppShell profile={profile}><Routes><Route path="/" element={<Dashboard/>}/><Route path="/pedidos" element={<Orders/>}/><Route path="/novo" element={<NewOrder/>}/><Route path="/pedido/:id" element={<OrderDetail/>}/><Route path="/produtos" element={<Guard profile={profile} admin><Products/></Guard>}/><Route path="/relatorios" element={<Guard profile={profile} admin><Reports/></Guard>}/>
-<Route path="/usuarios" element={<Guard profile={profile} admin><UsersPage/></Guard>}/>
-<Route path="*" element={<Navigate to="/"/>}/></Routes></AppShell>}/></Routes>}
+export default function App() {
+  const [session, S] = useState<any>(null);
+  const [profile, P] = useState<Profile | null>(null);
+  const [loading, L] = useState(true);
+
+  // Verifica a sessão e acompanha alterações no login
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data }) => {
+      S(data.session);
+
+      if (data.session) {
+        const { data: p } = await supabase
+          .from('perfis')
+          .select('*')
+          .eq('id', data.session.user.id)
+          .single();
+
+        P(p);
+      }
+
+      L(false);
+    });
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      S(s);
+
+      if (!s) {
+        P(null);
+        L(false);
+      } else {
+        setTimeout(() => {
+          supabase
+            .from('perfis')
+            .select('*')
+            .eq('id', s.user.id)
+            .single()
+            .then(({ data }) => {
+              P(data);
+              L(false);
+            });
+        }, 0);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Encerra a sessão após uma hora sem atividade
+  useEffect(() => {
+    if (!session) return;
+
+    let timeoutId: number;
+
+    async function logoutForInactivity() {
+      await supabase.auth.signOut({ scope: 'local' });
+
+      alert('Sua sessão foi encerrada por uma hora de inatividade. Faça login novamente.');
+    }
+
+    function resetTimer() {
+      window.clearTimeout(timeoutId);
+
+      timeoutId = window.setTimeout(
+        logoutForInactivity,
+        60 * 60 * 1000
+      );
+    }
+
+    const events: (keyof WindowEventMap)[] = [
+      'click',
+      'pointerdown',
+      'pointermove',
+      'keydown',
+      'touchstart',
+      'scroll'
+    ];
+
+    events.forEach(event => {
+      window.addEventListener(event, resetTimer, { passive: true });
+    });
+
+    // Inicia a contagem
+    resetTimer();
+
+    return () => {
+      window.clearTimeout(timeoutId);
+
+      events.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [session?.user?.id]);
+
+  if (!configured) {
+    return (
+      <div className="login">
+        <div className="loginbox">
+          <h1>Configure o Supabase</h1>
+          <p>
+            Crie um arquivo .env com VITE_SUPABASE_URL e
+            VITE_SUPABASE_ANON_KEY. Consulte o README.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <div className="login">Carregando...</div>;
+  }
+
+  return (
+    <Routes>
+      <Route
+        path="/primeiro-acesso"
+        element={<PrimeiroAcesso />}
+      />
+
+      <Route
+        path="/login"
+        element={session ? <Navigate to="/" /> : <Login />}
+      />
+
+      <Route
+        path="*"
+        element={
+          !session ? (
+            <Navigate to="/login" />
+          ) : !profile || !profile.ativo ? (
+            <div className="login">
+              Perfil não ativo. Procure o administrador.
+            </div>
+          ) : (
+            <AppShell profile={profile}>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/pedidos" element={<Orders />} />
+                <Route path="/novo" element={<NewOrder />} />
+                <Route path="/pedido/:id" element={<OrderDetail />} />
+
+                <Route
+                  path="/produtos"
+                  element={
+                    <Guard profile={profile} admin>
+                      <Products />
+                    </Guard>
+                  }
+                />
+
+                <Route
+                  path="/relatorios"
+                  element={
+                    <Guard profile={profile} admin>
+                      <Reports />
+                    </Guard>
+                  }
+                />
+
+                <Route
+                  path="/usuarios"
+                  element={
+                    <Guard profile={profile} admin>
+                      <UsersPage />
+                    </Guard>
+                  }
+                />
+
+                <Route path="*" element={<Navigate to="/" />} />
+              </Routes>
+            </AppShell>
+          )
+        }
+      />
+    </Routes>
+  );
+}
